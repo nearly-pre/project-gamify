@@ -18,21 +18,25 @@ clock = pygame.time.Clock()
 
 terminal = pygame.Surface(TERMINAL_SIZE)
 terminal.fill((48, 44, 44))
-terminalPos = (10, 10)
+terminalPosition = (10, 10)
 
 runButton = pygame.Surface((31, 31))
 runButton.fill((98, 109, 18))
 
 font = pygame.font.Font("./JetBrainsMono-Regular.ttf", 25)
-inputTextSurfaces = [0]
-inputTexts = [""]
-inputIndex = 0
-backspaceSleep = 0
+lineSurfaces = [0]
+codeLines = [""]
+currentLineIndex = 0
+backspaceDelayCounter = 0
 
 running = True
 
-def lineHighlight(text):
-    colors = {
+def codeLineHighlight(text):
+    """Function that highlights codes in real-time, as the user types. It's not important to understand
+    what the following code does. If you're really curious, search up lexing."""
+
+    # all the token colors. Chat-gpted, obviously. 
+    tokenColors = {
         Token.Keyword: (186, 218, 85),
         Token.Operator: (97, 214, 214),
         Token.Punctuation: (170, 170, 170),
@@ -58,7 +62,7 @@ def lineHighlight(text):
         if tokenValue.isspace():
             tokenValue = ' ' * len(tokenValue)
 
-        color = colors.get(tokenType, (220, 224, 230))
+        color = tokenColors.get(tokenType, (220, 224, 230))
         tokenSurface = font.render(tokenValue, True, color)
         surfaces.append((tokenSurface, x))
         x += tokenSurface.get_width()
@@ -68,78 +72,101 @@ def lineHighlight(text):
 while running:
     screen.fill((67, 153, 101))
     terminal.fill((48, 44, 44))
-    # runButton.fill((98, 172, 58))
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             exit()
+            
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_BACKSPACE:
-                continue
             if event.key == pygame.K_RETURN:
-                prevIndex = inputIndex
-                inputIndex += 1
-                inputTexts.append("")
-                inputTextSurfaces.append(0)
+                previousLineIndex = currentLineIndex
+                currentLineIndex += 1
+                codeLines.append("")
+                lineSurfaces.append(0)
 
-                if inputTexts[prevIndex]:
-                    for char in inputTexts[prevIndex]:
+                # auto-formatting
+                if codeLines[previousLineIndex]:
+                    for char in codeLines[previousLineIndex]:
                         if char != " ":
                             break
                         else:
-                            inputTexts[inputIndex] += " "
-                    if inputTexts[prevIndex][-1] == ":":
-                        inputTexts[inputIndex] += TAB
-                        
+                            codeLines[currentLineIndex] += " "
+                    if codeLines[previousLineIndex][-1] == ":":
+                        codeLines[currentLineIndex] += TAB
                 continue
-            if event.key == pygame.K_TAB:
-                inputTexts[inputIndex] += TAB
+            elif event.key == pygame.K_TAB:
+                codeLines[currentLineIndex] += TAB
                 continue
             else:
-                inputTexts[inputIndex] += event.unicode
-            inputTextSurfaces[inputIndex] = lineHighlight(inputTexts[inputIndex])
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mousePos = pygame.mouse.get_pos()
-            runButtonRect = pygame.Rect(60, 60, 31, 31)
-
-            if runButtonRect.collidepoint(mousePos):
-                print("Run button clicked!")
-                continue            
+                codeLines[currentLineIndex] += event.unicode # event.unicode helps identify keyboard shortcuts
+                
+            lineSurfaces[currentLineIndex] = codeLineHighlight(codeLines[currentLineIndex])
             
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_BACKSPACE] and keys[pygame.K_LCTRL]:
-        if not (backspaceSleep % 5):
-            if inputTexts[inputIndex].isspace():
-                lastDelim = 0
+        # if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+        #     mousePos = pygame.mouse.get_pos()
+        #     runButtonRect = pygame.Rect(60, 60, 31, 31)
+
+        #     if runButtonRect.collidepoint(mousePos):
+        #         print("Run button clicked!")
+        #         continue            
+
+    # The backspace check is handled separately from the main event loop because KEYDOWN events are
+    # only triggered once when a key is pressed. Holding a key down has no effect, the user would need
+    # to repeatedly press the key to get the desired "holding down" effect. So checking for backspace
+    # inside the event loop would only register a single press. We don't want that, so we keep it
+    # separate from the event loop and bring it down to the actual game loop, which allows the user
+    # to "hold" a key.
+    
+    pressedKeys = pygame.key.get_pressed()
+
+    # backspace mechanism
+    if pressedKeys[pygame.K_BACKSPACE]:
+        if not (backspaceDelayCounter % 5):
+            if pressedKeys[pygame.K_LCTRL]:
+                # if backspace + ctrl are pressed simultaneously, delete whole words
+                if codeLines[currentLineIndex].isspace():
+                    lastDelimiterIndex = 0
+                else:
+                    lastDelimiterIndex = codeLines[currentLineIndex].rfind(' ')
+                codeLines[currentLineIndex] = codeLines[currentLineIndex][:(0 if lastDelimiterIndex == -1 else lastDelimiterIndex)]
+                lineSurfaces[currentLineIndex] = codeLineHighlight(codeLines[currentLineIndex])
+                
             else:
-                lastDelim = inputTexts[inputIndex].rfind(' ')
-            inputTexts[inputIndex] = inputTexts[inputIndex][:(0 if lastDelim == -1 else lastDelim)]
-            inputTextSurfaces[inputIndex] = lineHighlight(inputTexts[inputIndex])
-        backspaceSleep += 1
+                # if only backspace is pressed, delete single characters
+                if not (backspaceDelayCounter % 5):
+                    codeLines[currentLineIndex] = codeLines[currentLineIndex][:-1]
+                    lineSurfaces[currentLineIndex] = codeLineHighlight(codeLines[currentLineIndex])
 
-    elif keys[pygame.K_BACKSPACE]:
-        if not (backspaceSleep % 5):
-            inputTexts[inputIndex] = inputTexts[inputIndex][:-1]
-            inputTextSurfaces[inputIndex] = lineHighlight(inputTexts[inputIndex])
-        backspaceSleep += 1
+            if codeLines[currentLineIndex] == "" and currentLineIndex != 0:
+                currentLineIndex -= 1
+                codeLines.pop()
+                lineSurfaces.pop()
+                    
+        backspaceDelayCounter += 1
 
-    for index, surfaces in enumerate(inputTextSurfaces):
+    # text blitting handled here
+    for lineIndex, surfaces in enumerate(lineSurfaces):
         if surfaces:
             for surface, x in surfaces:
-                terminal.blit(surface, (TERMINAL_PADDING[0] + x, index * 45 + TERMINAL_PADDING[1]))
+                terminal.blit(surface, (TERMINAL_PADDING[0] + x, lineIndex * 45 + TERMINAL_PADDING[1]))
 
-    if inputTexts[inputIndex]:
-        cursorOffset = font.size(inputTexts[inputIndex])[0] + TERMINAL_PADDING[0] + 50
+    # cursor
+    if codeLines[currentLineIndex]:
+        cursorXOffset = font.size(codeLines[currentLineIndex])[0] + TERMINAL_PADDING[0] + 50
     else:
-        cursorOffset = TERMINAL_PADDING[0] + 50
+        cursorXOffset = TERMINAL_PADDING[0] + 50
 
+    
     pygame.draw.rect(terminal, (58, 54, 54), (0, 0, TERMINAL_SIZE[0], 50))
-    terminal.blit(runButton, terminalPos)
-    pygame.draw.polygon(runButton, (255, 255, 255), [(8, 6), (8, 24), (23, 15)])
+    terminal.blit(runButton, terminalPosition) # the run button, will probably replace this with an image
+    pygame.draw.polygon(runButton, (255, 255, 255), [(8, 6), (8, 24), (23, 15)]) # the triangle within the run button
     screen.blit(terminal, (50, 50))
-    cursorStartY = inputIndex * 45 + TERMINAL_PADDING[1] + 50
+
+    # cursor
+    cursorStartY = currentLineIndex * 45 + TERMINAL_PADDING[1] + 50
     cursorEndY = cursorStartY + font.get_height()
-    cursor = pygame.draw.line(screen, (255, 255, 255), (cursorOffset, cursorStartY), (cursorOffset, cursorEndY), width=2)
+    cursor = pygame.draw.line(screen, (255, 255, 255), (cursorXOffset, cursorStartY), (cursorXOffset, cursorEndY), width=2)
+    
     pygame.display.flip()
     clock.tick(60)
