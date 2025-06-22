@@ -20,7 +20,7 @@ pygame.display.set_caption("python teacher")
 clock = pygame.time.Clock()
 
 # terminal
-terminalSize = [640, 380]
+terminalSize = [640, 400]
 terminal = pygame.Surface(terminalSize)
 terminalRect = terminal.get_rect(topleft=(50, 50))
 terminalPos = (50, 50)
@@ -50,6 +50,7 @@ def codeLineHighlight(text):
     # all the token colors. Chat-gpted, obviously. 
     tokenColors = {
         Token.Keyword: (186, 218, 85),
+        Token.Keyword.Namespace: (186, 218, 85),
         Token.Operator: (97, 214, 214),
         Token.Punctuation: (170, 170, 170),
         Token.Name: (220, 224, 230),
@@ -62,6 +63,7 @@ def codeLineHighlight(text):
         Token.Number: (180, 145, 230),
         Token.Name.Constant: (206, 145, 120),
         Token.Comment: (98, 114, 130),
+        Token.Comment.Single: (98, 114, 130),
         Token.Text: (220, 224, 230),
     }
 
@@ -286,12 +288,6 @@ while running:
         backspaceDelayCounter = 0
 
 
-    # text blitting handled here
-    for lineIndex, surfaces in enumerate(lineSurfaces):
-        if surfaces:
-            for surface, x in surfaces:
-                terminal.blit(surface, (TERMINAL_PADDING[0] + x, lineIndex * TERMINAL_LINE_HEIGHT + TERMINAL_PADDING[1]))
-
     # cursor
     if codeLines[currentLineIndex]:
         # font.size calculates the font size without creating a surface. here, we call font.size
@@ -304,6 +300,25 @@ while running:
         
         cursorOffsetX = TERMINAL_PADDING[0]
 
+    cursorStartY = currentLineIndex * TERMINAL_LINE_HEIGHT + TERMINAL_PADDING[1]
+    cursorEndY = cursorStartY + font.get_height()
+    cursor = pygame.draw.line(terminal, (255, 255, 255), (cursorOffsetX, cursorStartY), (cursorOffsetX, cursorEndY), width=2)
+
+    if cursorEndY > terminalSize[1] - 20:
+        terminalSize[1] += 50
+        terminal = pygame.Surface(terminalSize)
+        terminal.fill((48, 44, 44))
+    if cursorOffsetX > terminalSize[0] - 20:
+        terminalSize[0] += 50
+        terminal = pygame.Surface(terminalSize)
+        terminal.fill((48, 44, 44))
+        
+    # text blitting handled here
+    for lineIndex, surfaces in enumerate(lineSurfaces):
+        if surfaces:
+            for surface, x in surfaces:
+                terminal.blit(surface, (TERMINAL_PADDING[0] + x, lineIndex * TERMINAL_LINE_HEIGHT + TERMINAL_PADDING[1]))
+
     # nav bar
     pygame.draw.rect(terminal, (58, 54, 54), (0, 0, terminalSize[0], 50))
     terminalNavBar = pygame.Rect(terminalPos[0], terminalPos[1], terminalSize[0], 50)
@@ -311,11 +326,6 @@ while running:
     # run button
     terminal.blit(runButton, (10, 10))
     runButtonRect = pygame.Rect(terminalPos[0] + 10, terminalPos[1] + 10, 31, 31)
-
-    # cursor
-    cursorStartY = currentLineIndex * TERMINAL_LINE_HEIGHT + TERMINAL_PADDING[1]
-    cursorEndY = cursorStartY + font.get_height()
-    cursor = pygame.draw.line(terminal, (255, 255, 255), (cursorOffsetX, cursorStartY), (cursorOffsetX, cursorEndY), width=2)
 
     # terminal
     terminalRect = screen.blit(terminal, terminalPos)
