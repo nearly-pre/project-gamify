@@ -3,6 +3,8 @@ from sys import exit
 from pygments import lex
 from pygments.lexers import PythonLexer
 from pygments.token import Token
+import io
+from contextlib import redirect_stdout
 
 # constants
 WIDTH = 1280
@@ -34,12 +36,25 @@ font = pygame.font.Font("./JetBrainsMono-Regular.ttf", 25)
 lineSurfaces = [0]
 codeLines = [""]
 currentLineIndex = 0
+cursorColIndex = 0
 backspaceDelayCounter = 0
+deleteDelayCounter = 0
 
 # terminal actions
 draggingTerminal = False
 terminalResizing = False
 resizingEdges = {"left": False, "right": False, "top": False, "bottom": False}
+
+# output panel
+outputPanelVisible = False
+outputPanelSize = (600, 400)
+outputPanelPos = ((WIDTH - outputPanelSize[0]) // 2, (HEIGHT - outputPanelSize[1]) // 2)
+outputPanelSurface = pygame.Surface(outputPanelSize)
+outputPanelRect = outputPanelSurface.get_rect(topleft=outputPanelPos)
+outputPanelCloseButtonRect = None
+outputLines = []
+outputTextColor = (220, 224, 230)
+errorTextColor = (255, 120, 120)
 
 running = True
 
@@ -92,7 +107,7 @@ while running:
     # check if the mouse is hovering over a terminal edge and set the cursor
     # accordingly. only run if we are not currently dragging or resizing.
 
-    if not draggingTerminal and not terminalResizing:
+    if not draggingTerminal and not terminalResizing and not outputPanelVisible:
         left = terminalPos[0]
         top = terminalPos[1]
         right = left + terminalSize[0]
@@ -122,49 +137,108 @@ while running:
             exit()
 
         # keystroke handling
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_BACKSPACE:
-                continue # backspace handled in game loop
+        if event.type == pygame.KEYDOWN and not outputPanelVisible:
+            if event.key == pygame.K_BACKSPACE or event.key == pygame.K_DELETE:
+                continue # backspace and delete handled in game loop
+            
+            elif event.key == pygame.K_LEFT:
+                if cursorColIndex > 0:
+                    cursorColIndex -= 1
+                elif currentLineIndex > 0:
+                    currentLineIndex -= 1
+                    cursorColIndex = len(codeLines[currentLineIndex])
+                continue
+
+            elif event.key == pygame.K_RIGHT:
+                if cursorColIndex < len(codeLines[currentLineIndex]):
+                    cursorColIndex += 1
+                elif currentLineIndex < len(codeLines) - 1:
+                    currentLineIndex += 1
+                    cursorColIndex = 0
+                continue
+            
+            elif event.key == pygame.K_UP:
+                if currentLineIndex > 0:
+                    currentLineIndex -= 1
+                    cursorColIndex = min(cursorColIndex, len(codeLines[currentLineIndex]))
+                continue
+
+            elif event.key == pygame.K_DOWN:
+                if currentLineIndex < len(codeLines) - 1:
+                    currentLineIndex += 1
+                    cursorColIndex = min(cursorColIndex, len(codeLines[currentLineIndex]))
+                continue
 
             # new code line
             elif event.key == pygame.K_RETURN:
-                previousLineIndex = currentLineIndex
-                currentLineIndex += 1
-                codeLines.append("")
-                lineSurfaces.append(0)
+                textAfterCursor = codeLines[currentLineIndex][cursorColIndex:]
+                currentLine = codeLines[currentLineIndex][:cursorColIndex]
+                codeLines[currentLineIndex] = currentLine
+                lineSurfaces[currentLineIndex] = codeLineHighlight(currentLine)
 
-                # auto-formatting
-                if codeLines[previousLineIndex]:
-                    for char in codeLines[previousLineIndex]:
-                        if char != " ":
-                            break
-                        else:
-                            codeLines[currentLineIndex] += " "
-                    if codeLines[previousLineIndex][-1] == ":":
-                        codeLines[currentLineIndex] += TAB
-                        
+                newIndentation = ""
+                for char in currentLine:
+                    if char != " ":
+                        break
+                    else:
+                        newIndentation += " "
+                if currentLine.strip().endswith(":"):
+                    newIndentation += TAB
+                
+                currentLineIndex += 1
+                cursorColIndex = len(newIndentation)
+                
+                newLine = newIndentation + textAfterCursor
+                codeLines.insert(currentLineIndex, newLine)
+                lineSurfaces.insert(currentLineIndex, codeLineHighlight(newLine))
+                
                 continue
                 
             elif event.key == pygame.K_TAB:
-                codeLines[currentLineIndex] += TAB
-                continue
+                line = codeLines[currentLineIndex]
+                codeLines[currentLineIndex] = line[:cursorColIndex] + TAB + line[cursorColIndex:]
+                cursorColIndex += len(TAB)
             
             else:
                 # ignoring keyboard shortcuts using isprintable()
-                if event.unicode.isprintable(): 
-                    codeLines[currentLineIndex] += event.unicode # event.unicode helps identify keyboard shortcuts
+                if event.unicode.isprintable():
+                    line = codeLines[currentLineIndex]
+                    codeLines[currentLineIndex] = line[:cursorColIndex] + event.unicode + line[cursorColIndex:]
+                    cursorColIndex += len(event.unicode)
                 
             lineSurfaces[currentLineIndex] = codeLineHighlight(codeLines[currentLineIndex])
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
+                if outputPanelVisible:
+                    # if the output panel is visible, only check for a click on its close button
+                    if outputPanelCloseButtonRect and outputPanelCloseButtonRect.collidepoint((mousePosX, mousePosY)):
+                        outputPanelVisible = False
+                        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                    continue
+
                 # checking if run button was pressed
                 if runButtonRect.collidepoint((mousePosX, mousePosY)):
-                    fullCode = "".join(codeLines)
-                    try:
-                        exec(fullCode) # code executed
-                    except Exception as e:
-                        print(f"An error occurred: {e}")
+                    outputLines = []
+                    codeOutput = io.StringIO()
+                    isError = False
+                    
+                    with redirect_stdout(codeOutput):
+                        try:
+                            fullCode = "\n".join(codeLines)
+                            exec(fullCode) # code executed
+                        except Exception as e:
+                            print(f"An error occurred: {e}")
+                            isError = True
+                    
+                    outputText = codeOutput.getvalue()
+                    textColor = errorTextColor if isError else outputTextColor
+
+                    for line in outputText.splitlines():
+                        lineSurface = font.render(line, True, textColor)
+                        outputLines.append(lineSurface)
+                    
+                    outputPanelVisible = True
 
 
                 # for terminal relocation
@@ -242,7 +316,7 @@ while running:
                         sizeChanged = True
                 
                 if sizeChanged:
-                    terminal = pygame.Surface(terminalSize)
+                   terminal = pygame.Surface(terminalSize)
                     terminal.fill((48, 44, 44))
 
         if event.type == pygame.MOUSEBUTTONUP:
@@ -259,46 +333,73 @@ while running:
     # separate from the event loop and bring it down to the actual game loop, which allows the user
     # to "hold" a key.
 
+    if not outputPanelVisible:
+        textModified = False
+        pressedKeys = pygame.key.get_pressed()
         
-    pressedKeys = pygame.key.get_pressed()
-    
-    # backspace mechanism
-    if pressedKeys[pygame.K_BACKSPACE]:
-        if not (backspaceDelayCounter % 5):
-            if pressedKeys[pygame.K_LCTRL]:
-                # if backspace + ctrl are pressed simultaneously, delete whole words
-                if codeLines[currentLineIndex].isspace():
-                    lastDelimiterIndex = 0
+        # backspace mechanism
+        if pressedKeys[pygame.K_BACKSPACE]:
+            if not (backspaceDelayCounter % 5):
+                if pressedKeys[pygame.K_LCTRL]:
+                    # if backspace + ctrl are pressed simultaneously, delete whole words
+                    if cursorColIndex > 0:
+                        currentLine = codeLines[currentLineIndex]
+                        textBeforeCursor = currentLine[:cursorColIndex]
+                        i = len(textBeforeCursor) - 1
+                        while i >= 0 and textBeforeCursor[i].isspace():
+                            i -= 1
+                        while i >= 0 and not textBeforeCursor[i].isspace():
+                            i -= 1
+                        
+                        newCursorPos = i + 1
+                        codeLines[currentLineIndex] = currentLine[:newCursorPos] + currentLine[cursorColIndex:]
+                        cursorColIndex = newCursorPos
+                        textModified = True
                 else:
-                    lastDelimiterIndex = codeLines[currentLineIndex].rfind(' ')
-                codeLines[currentLineIndex] = codeLines[currentLineIndex][:(0 if lastDelimiterIndex == -1 else lastDelimiterIndex)]
-                lineSurfaces[currentLineIndex] = codeLineHighlight(codeLines[currentLineIndex])
-            else:
-                # if only backspace is pressed, delete single characters
-                codeLines[currentLineIndex] = codeLines[currentLineIndex][:-1]
-                lineSurfaces[currentLineIndex] = codeLineHighlight(codeLines[currentLineIndex])
+                    # if only backspace is pressed, delete single characters
+                    if cursorColIndex > 0:
+                        currentLine = codeLines[currentLineIndex]
+                        codeLines[currentLineIndex] = currentLine[:cursorColIndex - 1] + currentLine[cursorColIndex:]
+                        cursorColIndex -= 1
+                        textModified = True
+                    elif currentLineIndex > 0:
+                        # at the start of a line, merge with the previous line
+                        textToAppend = codeLines.pop(currentLineIndex)
+                        lineSurfaces.pop(currentLineIndex)
+                        currentLineIndex -= 1
+                        newCursorPos = len(codeLines[currentLineIndex])
+                        codeLines[currentLineIndex] += textToAppend
+                        cursorColIndex = newCursorPos
+                        textModified = True
 
-            if codeLines[currentLineIndex] == "" and currentLineIndex != 0:
-                codeLines.pop()
-                lineSurfaces.pop()
-                currentLineIndex -= 1
+            backspaceDelayCounter += 1
+        else:
+            backspaceDelayCounter = 0
 
-        backspaceDelayCounter += 1
-    else:
-        backspaceDelayCounter = 0
+        # delete mechanism
+        if pressedKeys[pygame.K_DELETE]:
+            if not (deleteDelayCounter % 5):
+                currentLine = codeLines[currentLineIndex]
+                if cursorColIndex < len(currentLine):
+                    codeLines[currentLineIndex] = currentLine[:cursorColIndex] + currentLine[cursorColIndex + 1:]
+                    textModified = True
+                elif currentLineIndex < len(codeLines) - 1:
+                    # at the end of a line, merge with the next line
+                    textToAppend = codeLines.pop(currentLineIndex + 1)
+                    lineSurfaces.pop(currentLineIndex + 1)
+                    codeLines[currentLineIndex] += textToAppend
+                    textModified = True
+            deleteDelayCounter += 1
+        else:
+            deleteDelayCounter = 0
+        
+        if textModified:
+            lineSurfaces[currentLineIndex] = codeLineHighlight(codeLines[currentLineIndex])
 
 
     # cursor
-    if codeLines[currentLineIndex]:
-        # font.size calculates the font size without creating a surface. here, we call font.size
-        # on the current codeLine, grab its width (x) using indexing (font.size returns a tuple)
-        # and add it to other parameters affecting the horizontal offset.
-        
-        cursorOffsetX = font.size(codeLines[currentLineIndex])[0] + TERMINAL_PADDING[0]
-    else:
-        # case when no text has been entered in the terminal
-        
-        cursorOffsetX = TERMINAL_PADDING[0]
+    textBeforeCursor = codeLines[currentLineIndex][:cursorColIndex]
+    cursorOffsetX = font.size(textBeforeCursor)[0] + TERMINAL_PADDING[0]
 
     cursorStartY = currentLineIndex * TERMINAL_LINE_HEIGHT + TERMINAL_PADDING[1]
     cursorEndY = cursorStartY + font.get_height()
@@ -329,6 +430,38 @@ while running:
 
     # terminal
     terminalRect = screen.blit(terminal, terminalPos)
+    
+    # draw output panel if visible
+    if outputPanelVisible:
+        outputPanelSurface.fill((38, 38, 38))
+        pygame.draw.rect(outputPanelSurface, (80, 80, 80), outputPanelSurface.get_rect(), 2)
+
+        titleFont = pygame.font.Font("./JetBrainsMono-Regular.ttf", 20)
+        titleSurface = titleFont.render("Output", True, (200, 200, 200))
+        outputPanelSurface.blit(titleSurface, (10, 8))
+
+        closeButtonSurface = titleFont.render("X", True, (255, 90, 90))
+        closeButtonLocalRect = closeButtonSurface.get_rect(topright=(outputPanelSize[0] - 15, 8))
+        outputPanelSurface.blit(closeButtonSurface, closeButtonLocalRect)
+        
+        # store the absolute rect on the screen for click detection
+        outputPanelCloseButtonRect = pygame.Rect(
+            outputPanelPos[0] + closeButtonLocalRect.x,
+            outputPanelPos[1] + closeButtonLocalRect.y,
+            closeButtonLocalRect.width,
+            closeButtonLocalRect.height
+        )
+
+        # blit the output lines
+        yOffset = 40
+        for lineSurface in outputLines:
+            outputPanelSurface.blit(lineSurface, (15, yOffset))
+            yOffset += font.get_height()
+            if yOffset > outputPanelSize[1] - 15:
+                break # prevent text from overflowing the panel
+        
+        screen.blit(outputPanelSurface, outputPanelPos)
+
 
     pygame.display.flip()
     clock.tick(60)
