@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
 import io
 
 class Terminal:
-    def __init__(self, pos=(50, 50)):
+    def __init__(self, userControlledVariables, pos=(100, 100)):
         # constants
         self.WIDTH = 1280
         self.HEIGHT = 720
@@ -16,6 +16,11 @@ class Terminal:
         self.TERMINAL_LINE_HEIGHT = 35
         self.MINIMUM_TERMINAL_WIDTH = 500
         self.MINIMUM_TERMINAL_HEIGHT = 300
+
+        # userControlledVariables should be a dictionary containing
+        # the name and value of the variables that are to be modified
+        # by the user
+        self.userControlledVariables = userControlledVariables
 
         # terminal
         self.terminalSize = [640, 400]
@@ -35,6 +40,8 @@ class Terminal:
         self.backspaceDelayCounter = 0
         self.deleteDelayCounter = 0
 
+        self.isFocused = False
+
         self.outputTextColor = (220, 224, 230)
         self.errorTextColor = (255, 120, 120)
 
@@ -44,6 +51,7 @@ class Terminal:
         self.resizingEdges = {"left": False, "right": False, "top": False, "bottom": False}
 
         # output panel
+        self.outputPanelVisible = False  # <-- Re-added: flag to control visibility
         self.outputPanelSize = (600, 400)
         self.outputPanelPos = ((self.WIDTH - self.outputPanelSize[0]) // 2, (self.HEIGHT - self.outputPanelSize[1]) // 2)
         self.outputPanelSurface = pygame.Surface(self.outputPanelSize, pygame.SRCALPHA)
@@ -56,6 +64,9 @@ class Terminal:
         # initialize dragging offset
         self.draggingOffsetX = 0
         self.draggingOffsetY = 0
+
+    def runUserCode(self, code):
+        exec(code, {}, self.userControlledVariables)
 
     def codeLineHighlight(self, text):
         """Function that highlights codes in real-time, as the user types. It's not important to understand
@@ -103,7 +114,7 @@ class Terminal:
 
         # check if the mouse is hovering over a terminal edge and set the cursor
         # accordingly. only run if we are not currently dragging or resizing.
-        if not self.draggingTerminal and not self.terminalResizing:
+        if not self.draggingTerminal and not self.terminalResizing and not self.outputPanelVisible:
             left = self.terminalPos[0]
             top = self.terminalPos[1]
             right = left + self.terminalSize[0]
@@ -130,207 +141,207 @@ class Terminal:
                 pygame.quit()
                 exit()
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_BACKSPACE or event.key == pygame.K_DELETE:
-                    continue  # backspace and delete handled in game loop
-
-                elif event.key == pygame.K_LEFT:
-                    # if the left key is pressed, move the cursor to the left
-
-                    if self.cursorColIndex > 0:
-                        self.cursorColIndex -= 1
-                    elif self.currentLineIndex > 0:
-                        self.currentLineIndex -= 1
-                        self.cursorColIndex = len(self.codeLines[self.currentLineIndex])
-                    continue
-
-                elif event.key == pygame.K_RIGHT:
-                    # if the right key is pressed, move the cursor to the right
-
-                    if self.cursorColIndex < len(self.codeLines[self.currentLineIndex]):
-                        self.cursorColIndex += 1
-                    elif self.currentLineIndex < len(self.codeLines) - 1:
-                        self.currentLineIndex += 1
-                        self.cursorColIndex = 0
-                    continue
-
-                elif event.key == pygame.K_UP:
-                    # if the up key is pressed, move the cursor up by a line
-
-                    if self.currentLineIndex > 0:
-                        self.currentLineIndex -= 1
-                        # when the user moves up, the horizontal cursor position has to change 
-                        # IF the line above is smaller in length
-
-                        self.cursorColIndex = min(self.cursorColIndex, len(self.codeLines[self.currentLineIndex]))
-                    continue
-
-                elif event.key == pygame.K_DOWN:
-                    # if the down key is pressed, move the cursor down by a line
-
-                    if self.currentLineIndex < len(self.codeLines) - 1:
-                        self.currentLineIndex += 1
-                        self.cursorColIndex = min(self.cursorColIndex, len(self.codeLines[self.currentLineIndex]))
-                    continue
-
-                elif event.key == pygame.K_RETURN:
-                    # new code line
-
-                    textAfterCursor = self.codeLines[self.currentLineIndex][self.cursorColIndex:] 
-                    currentLine = self.codeLines[self.currentLineIndex][:self.cursorColIndex]
-                    self.codeLines[self.currentLineIndex] = currentLine
-                    self.lineSurfaces[self.currentLineIndex] = self.codeLineHighlight(currentLine)
-
-                    # auto-indentation feature
-                    newIndentation = ""
-                    for char in currentLine:
-                        if char != " ":
-                            break
-                        else:
-                            newIndentation += " "
-                    if currentLine.strip().endswith(":"):
-                        newIndentation += self.TAB
-
-                    self.currentLineIndex += 1
-                    self.cursorColIndex = len(newIndentation)
-
-                    newLine = newIndentation + textAfterCursor
-                    self.codeLines[self.currentLineIndex] = newLine
-                    self.lineSurfaces[self.currentLineIndex] = self.codeLineHighlight(newLine)
-
-                    continue
-
-                elif event.key == pygame.K_TAB:
-                    # indentation
-
-                    line = self.codeLines[self.currentLineIndex]
-                    self.codeLines[self.currentLineIndex] = line[:self.cursorColIndex] + self.TAB + line[self.cursorColIndex:]
-                    self.cursorColIndex += len(self.TAB)
-
-                else:
-                    # only print unicode printable characters. fixes a glitch
-
-                    if event.unicode.isprintable():
-                        line = self.codeLines[self.currentLineIndex]
-                        self.codeLines[self.currentLineIndex] = line[:self.cursorColIndex] + event.unicode + line[self.cursorColIndex:]
-                        self.cursorColIndex += len(event.unicode)
-
-                # after all events have been processed, highlight the line
-                
-                self.lineSurfaces[self.currentLineIndex] = self.codeLineHighlight(self.codeLines[self.currentLineIndex])
-
+            
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
+                    left = self.terminalPos[0]
+                    top = self.terminalPos[1]
+                    right = left + self.terminalSize[0]
+                    bottom = top + self.terminalSize[1]
 
-                    # run the code
-                    if self.runButtonRect.collidepoint((mousePosX, mousePosY)):
-                        outputLines = []
-                        codeOutput = io.StringIO()
-                        isError = False
-                        
-                        with redirect_stdout(codeOutput):
-                            try:
-                                fullCode = "\n".join(self.codeLines)
-                                exec(fullCode) # code executed
-                            except Exception as e:
-                                print(f"Error executing code: {e}")
-                                isError = True
-                        
-                        outputText = codeOutput.getvalue()
-                        textColor = self.errorTextColor if isError else self.outputTextColor
+                    if left - self.resizeMargin <= mousePosX <= left + self.resizeMargin:
+                        self.resizingEdges["left"] = True
+                    if right - self.resizeMargin <= mousePosX <= right + self.resizeMargin:
+                        self.resizingEdges["right"] = True
+                    if top - self.resizeMargin <= mousePosY <= top + self.resizeMargin:
+                        self.resizingEdges["top"] = True
+                    if bottom - self.resizeMargin <= mousePosY <= bottom + self.resizeMargin:
+                        self.resizingEdges["bottom"] = True
 
-                        for line in outputText.splitlines():
-                            lineSurface = self.font.render(line, True, textColor)
-                            outputLines.append(lineSurface)
-                        
-                    elif self.terminalNavBar.collidepoint((mousePosX, mousePosY)):
-                        self.draggingOffsetX = self.terminalNavBar.x - mousePosX
-                        self.draggingOffsetY = self.terminalNavBar.y - mousePosY
-                        self.draggingTerminal = True
-                    else:
-                        # terminal resizing
+                    if any(self.resizingEdges.values()):
+                        self.terminalResizing = True
 
-                        left = self.terminalPos[0]
-                        top = self.terminalPos[1]
-                        right = left + self.terminalSize[0]
-                        bottom = top + self.terminalSize[1]
-
-                        if left - self.resizeMargin <= mousePosX <= left + self.resizeMargin:
-                            self.resizingEdges["left"] = True
-                        if right - self.resizeMargin <= mousePosX <= right + self.resizeMargin:
-                            self.resizingEdges["right"] = True
-                        if top - self.resizeMargin <= mousePosY <= top + self.resizeMargin:
-                            self.resizingEdges["top"] = True
-                        if bottom - self.resizeMargin <= mousePosY <= bottom + self.resizeMargin:
-                            self.resizingEdges["bottom"] = True
-
-                        if any(self.resizingEdges.values()):
-                            self.terminalResizing = True
-
+                    if self.terminalRect.collidepoint((mousePosX, mousePosY)) and not self.terminalResizing:
+                        if not self.terminalNavBar.collidepoint((mousePosX, mousePosY)):
+                            self.isFocused = True
+                            continue
+                        else:
+                            if self.runButtonRect.collidepoint((mousePosX, mousePosY)):
+                                self.isFocused = True
+                            else:
+                                self.draggingOffsetX = self.terminalNavBar.x - mousePosX
+                                self.draggingOffsetY = self.terminalNavBar.y - mousePosY
+                                self.draggingTerminal = True
+            
             if event.type == pygame.MOUSEMOTION:
-                if self.draggingTerminal:
-                    newPosX = self.draggingOffsetX + mousePosX
-                    newPosY = self.draggingOffsetY + mousePosY
+                    if self.draggingTerminal:
+                        newPosX = self.draggingOffsetX + mousePosX
+                        newPosY = self.draggingOffsetY + mousePosY
 
-                    if newPosX < 0:
-                        newPosX = 0
-                    elif newPosX > self.WIDTH - self.terminalSize[0]:
-                        newPosX = self.WIDTH - self.terminalSize[0]
+                        if newPosX < 0:
+                            newPosX = 0
+                        elif newPosX > self.WIDTH - self.terminalSize[0]:
+                            newPosX = self.WIDTH - self.terminalSize[0]
 
-                    if newPosY < 0:
-                        newPosY = 0
-                    elif newPosY > self.HEIGHT - self.terminalSize[1]:
-                        newPosY = self.HEIGHT - self.terminalSize[1]
+                        if newPosY < 0:
+                            newPosY = 0
+                        elif newPosY > self.HEIGHT - self.terminalSize[1]:
+                            newPosY = self.HEIGHT - self.terminalSize[1]
 
-                    self.terminalPos = (newPosX, newPosY)
+                        self.terminalPos = (newPosX, newPosY)
 
-                elif self.terminalResizing:
-                    sizeChanged = False
-                    rightEdge = self.terminalPos[0] + self.terminalSize[0]
-                    bottomEdge = self.terminalPos[1] + self.terminalSize[1]
+                    elif self.terminalResizing:
+                        sizeChanged = False
+                        rightEdge = self.terminalPos[0] + self.terminalSize[0]
+                        bottomEdge = self.terminalPos[1] + self.terminalSize[1]
 
-                    if self.resizingEdges["right"]:
-                        newWidth = mousePosX - self.terminalPos[0]
-                        if newWidth >= self.MINIMUM_TERMINAL_WIDTH:
-                            self.terminalSize[0] = newWidth
-                            sizeChanged = True
+                        if self.resizingEdges["right"]:
+                            newWidth = mousePosX - self.terminalPos[0]
+                            if newWidth >= self.MINIMUM_TERMINAL_WIDTH:
+                                self.terminalSize[0] = newWidth
+                                sizeChanged = True
 
-                    if self.resizingEdges["left"]:
-                        newWidth = rightEdge - mousePosX
-                        if newWidth >= self.MINIMUM_TERMINAL_WIDTH:
-                            self.terminalSize[0] = newWidth
-                            self.terminalPos = (mousePosX, self.terminalPos[1])
-                            sizeChanged = True
+                        if self.resizingEdges["left"]:
+                            newWidth = rightEdge - mousePosX
+                            if newWidth >= self.MINIMUM_TERMINAL_WIDTH:
+                                self.terminalSize[0] = newWidth
+                                self.terminalPos = (mousePosX, self.terminalPos[1])
+                                sizeChanged = True
 
-                    if self.resizingEdges["bottom"]:
-                        newHeight = mousePosY - self.terminalPos[1]
-                        if newHeight >= self.MINIMUM_TERMINAL_HEIGHT:
-                            self.terminalSize[1] = newHeight
-                            sizeChanged = True
+                        if self.resizingEdges["bottom"]:
+                            newHeight = mousePosY - self.terminalPos[1]
+                            if newHeight >= self.MINIMUM_TERMINAL_HEIGHT:
+                                self.terminalSize[1] = newHeight
+                                sizeChanged = True
 
-                    if self.resizingEdges["top"]:
-                        newHeight = bottomEdge - mousePosY
-                        if newHeight >= self.MINIMUM_TERMINAL_HEIGHT:
-                            self.terminalSize[1] = newHeight
-                            self.terminalPos = (self.terminalPos[0], mousePosY)
-                            sizeChanged = True
+                        if self.resizingEdges["top"]:
+                            newHeight = bottomEdge - mousePosY
+                            if newHeight >= self.MINIMUM_TERMINAL_HEIGHT:
+                                self.terminalSize[1] = newHeight
+                                self.terminalPos = (self.terminalPos[0], mousePosY)
+                                sizeChanged = True
 
-                    if sizeChanged:
-                        self.terminal = pygame.Surface(self.terminalSize, pygame.SRCALPHA)
-                        self.terminal.fill((48, 44, 44, 230))
-
+                        if sizeChanged:
+                            self.terminal = pygame.Surface(self.terminalSize, pygame.SRCALPHA)
+                            self.terminal.fill((48, 44, 44, 220))
+            
             if event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:
-                    self.draggingTerminal = False
-                    self.terminalResizing = False
-                    self.resizingEdges = {"left": False, "right": False, "top": False, "bottom": False}
+                    if event.button == 1:
+                        self.draggingTerminal = False
+                        self.terminalResizing = False
+                        self.resizingEdges = {"left": False, "right": False, "top": False, "bottom": False}
 
-        # Backspace and delete handling
+            if self.isFocused:
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_BACKSPACE or event.key == pygame.K_DELETE:
+                        continue  # backspace and delete handled in game loop
+
+                    elif event.key == pygame.K_LEFT:
+                        if self.cursorColIndex > 0:
+                            self.cursorColIndex -= 1
+                        elif self.currentLineIndex > 0:
+                            self.currentLineIndex -= 1
+                            self.cursorColIndex = len(self.codeLines[self.currentLineIndex])
+                        continue
+
+                    elif event.key == pygame.K_RIGHT:
+                        if self.cursorColIndex < len(self.codeLines[self.currentLineIndex]):
+                            self.cursorColIndex += 1
+                        elif self.currentLineIndex < len(self.codeLines) - 1:
+                            self.currentLineIndex += 1
+                            self.cursorColIndex = 0
+                        continue
+
+                    elif event.key == pygame.K_UP:
+                        if self.currentLineIndex > 0:
+                            self.currentLineIndex -= 1
+                            self.cursorColIndex = min(self.cursorColIndex, len(self.codeLines[self.currentLineIndex]))
+                        continue
+
+                    elif event.key == pygame.K_DOWN:
+                        if self.currentLineIndex < len(self.codeLines) - 1:
+                            self.currentLineIndex += 1
+                            self.cursorColIndex = min(self.cursorColIndex, len(self.codeLines[self.currentLineIndex]))
+                        continue
+
+                    elif event.key == pygame.K_RETURN:
+                        textAfterCursor = self.codeLines[self.currentLineIndex][self.cursorColIndex:] 
+                        currentLine = self.codeLines[self.currentLineIndex][:self.cursorColIndex]
+                        self.codeLines[self.currentLineIndex] = currentLine
+                        self.lineSurfaces[self.currentLineIndex] = self.codeLineHighlight(currentLine)
+
+                        newIndentation = ""
+                        for char in currentLine:
+                            if char != " ":
+                                break
+                            else:
+                                newIndentation += " "
+                        if currentLine.strip().endswith(":"):
+                            newIndentation += self.TAB
+
+                        self.currentLineIndex += 1
+                        self.cursorColIndex = len(newIndentation)
+
+                        newLine = newIndentation + textAfterCursor
+                        self.codeLines.insert(self.currentLineIndex, newLine)
+                        self.lineSurfaces.insert(self.currentLineIndex, self.codeLineHighlight(newLine))
+                        continue
+
+                    elif event.key == pygame.K_TAB:
+                        line = self.codeLines[self.currentLineIndex]
+                        self.codeLines[self.currentLineIndex] = line[:self.cursorColIndex] + self.TAB + line[self.cursorColIndex:]
+                        self.cursorColIndex += len(self.TAB)
+
+                    else:
+                        if event.unicode.isprintable():
+                            line = self.codeLines[self.currentLineIndex]
+                            self.codeLines[self.currentLineIndex] = line[:self.cursorColIndex] + event.unicode + line[self.cursorColIndex:]
+                            self.cursorColIndex += len(event.unicode)
+
+                    self.lineSurfaces[self.currentLineIndex] = self.codeLineHighlight(self.codeLines[self.currentLineIndex])
+
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:
+
+                        if not self.terminalRect.collidepoint((mousePosX, mousePosY)):
+                            self.isFocused = False
+                            continue
+
+                        # run the code
+                        if self.runButtonRect.collidepoint((mousePosX, mousePosY)):
+                            codeOutput = io.StringIO()
+                            isError = False
+                            
+                            with redirect_stdout(codeOutput):
+                                try:
+                                    fullCode = "\n".join(self.codeLines)
+                                    self.runUserCode(fullCode)
+                                except Exception as e:
+                                    print(f"Error executing code: {e}")
+                                    isError = True
+                            
+                            outputText = codeOutput.getvalue()
+                            textColor = self.errorTextColor if isError else self.outputTextColor
+
+                            self.outputLines = []
+                            for line in outputText.splitlines():
+                                lineSurface = self.font.render(line, True, textColor)
+                                self.outputLines.append(lineSurface)
+
+                            self.outputPanelVisible = True  # show output panel after running
+
+                if event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:
+                        # check if the close button of the output panel was clicked
+                        if self.outputPanelVisible and self.outputPanelCloseButtonRect and self.outputPanelCloseButtonRect.collidepoint((mousePosX, mousePosY)):
+                            self.outputPanelVisible = False
+
+        # backspace and delete handling
         textModified = False
         pressedKeys = pygame.key.get_pressed()
 
         if pressedKeys[pygame.K_BACKSPACE]:
-            if not (self.backspaceDelayCounter % 5):
+            if not (self.backspaceDelayCounter % 15):
                 if pressedKeys[pygame.K_LCTRL]:
                     if self.cursorColIndex > 0:
                         currentLine = self.codeLines[self.currentLineIndex]
@@ -340,7 +351,6 @@ class Terminal:
                             i -= 1
                         while i >= 0 and not textBeforeCursor[i].isspace():
                             i -= 1
-
                         newCursorPos = i + 1
                         self.codeLines[self.currentLineIndex] = currentLine[:newCursorPos] + currentLine[self.cursorColIndex:]
                         self.cursorColIndex = newCursorPos
@@ -359,25 +369,9 @@ class Terminal:
                         self.codeLines[self.currentLineIndex] += textToAppend
                         self.cursorColIndex = newCursorPos
                         textModified = True
-
             self.backspaceDelayCounter += 1
         else:
             self.backspaceDelayCounter = 0
-
-        if pressedKeys[pygame.K_DELETE]:
-            if not (self.deleteDelayCounter % 5):
-                currentLine = self.codeLines[self.currentLineIndex]
-                if self.cursorColIndex < len(currentLine):
-                    self.codeLines[self.currentLineIndex] = currentLine[:self.cursorColIndex] + currentLine[self.cursorColIndex + 1:]
-                    textModified = True
-                elif self.currentLineIndex < len(self.codeLines) - 1:
-                    textToAppend = self.codeLines.pop(self.currentLineIndex + 1)
-                    self.lineSurfaces.pop(self.currentLineIndex + 1)
-                    self.codeLines[self.currentLineIndex] += textToAppend
-                    textModified = True
-            self.deleteDelayCounter += 1
-        else:
-            self.deleteDelayCounter = 0
 
         if textModified:
             self.lineSurfaces[self.currentLineIndex] = self.codeLineHighlight(self.codeLines[self.currentLineIndex])
@@ -388,26 +382,26 @@ class Terminal:
 
         cursorStartY = self.currentLineIndex * self.TERMINAL_LINE_HEIGHT + self.TERMINAL_PADDING[1]
         cursorEndY = cursorStartY + self.font.get_height()
-        cursor = pygame.draw.line(self.terminal, (255, 255, 255), (cursorOffsetX, cursorStartY), (cursorOffsetX, cursorEndY), width=2)
+        pygame.draw.line(self.terminal, (255, 255, 255), (cursorOffsetX, cursorStartY), (cursorOffsetX, cursorEndY), width=2)
 
         if cursorEndY > self.terminalSize[1] - 20:
             self.terminalSize[1] += 50
             self.terminal = pygame.Surface(self.terminalSize, pygame.SRCALPHA)
-            self.terminal.fill((48, 44, 44, 230))
+            self.terminal.fill((48, 44, 44, 220))
         if cursorOffsetX > self.terminalSize[0] - 20:
             self.terminalSize[0] += 50
             self.terminal = pygame.Surface(self.terminalSize, pygame.SRCALPHA)
-            self.terminal.fill((48, 44, 44, 230))
+            self.terminal.fill((48, 44, 44, 220))
 
         # text blitting
-        self.terminal.fill((48, 44, 44, 230))
+        self.terminal.fill((48, 44, 44, 220))
         for lineIndex, surfaces in enumerate(self.lineSurfaces):
             if surfaces:
                 for surface, x in surfaces:
                     self.terminal.blit(surface, (self.TERMINAL_PADDING[0] + x, lineIndex * self.TERMINAL_LINE_HEIGHT + self.TERMINAL_PADDING[1]))
 
         # nav bar
-        pygame.draw.rect(self.terminal, (48, 44, 44, 240), (0, 0, self.terminalSize[0], 50))
+        pygame.draw.rect(self.terminal, (48, 44, 44, 222), (0, 0, self.terminalSize[0], 50))
         self.terminalNavBar = pygame.Rect(self.terminalPos[0], self.terminalPos[1], self.terminalSize[0], 50)
 
         # run button
@@ -416,3 +410,31 @@ class Terminal:
 
         # blit terminal to screen
         self.terminalRect = screen.blit(self.terminal, self.terminalPos)
+
+        # draw output panel if visible
+        if self.outputPanelVisible:
+            self.outputPanelSurface.fill((38, 38, 38, 200))
+            pygame.draw.rect(self.outputPanelSurface, (80, 80, 80, 200), self.outputPanelSurface.get_rect(), 2)
+
+            titleFont = pygame.font.Font("./JetBrainsMono-Regular.ttf", 20)
+            titleSurface = titleFont.render("Output", True, (200, 200, 200))
+            self.outputPanelSurface.blit(titleSurface, (10, 8))
+
+            closeButtonSurface = titleFont.render("X", True, (255, 90, 90))
+            closeButtonLocalRect = closeButtonSurface.get_rect(topright=(self.outputPanelSize[0] - 15, 8))
+            self.outputPanelSurface.blit(closeButtonSurface, closeButtonLocalRect)
+
+            self.outputPanelCloseButtonRect = pygame.Rect(
+                self.outputPanelPos[0] + closeButtonLocalRect.x,
+                self.outputPanelPos[1] + closeButtonLocalRect.y,
+                closeButtonLocalRect.width,
+                closeButtonLocalRect.height
+            )
+
+            yOffset = 40
+            for lineSurface in self.outputLines:
+                self.outputPanelSurface.blit(lineSurface, (15, yOffset))
+                yOffset += self.font.get_height()
+                if yOffset > self.outputPanelSize[1] - 15:
+                    break
+            screen.blit(self.outputPanelSurface, self.outputPanelPos)
