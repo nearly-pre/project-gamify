@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
 import io
 
 class Terminal:
-    def __init__(self, userControlledVariables, pos=(100, 100)):
+    def __init__(self, userControlledVariables, pos=(40, 250)):
         # constants
         self.WIDTH = 1280
         self.HEIGHT = 720
@@ -23,7 +23,7 @@ class Terminal:
         self.userControlledVariables = userControlledVariables
 
         # terminal
-        self.terminalSize = [640, 400]
+        self.terminalSize = [500, 300]
         self.terminal = pygame.Surface(self.terminalSize, pygame.SRCALPHA) 
         self.terminalPos = pos
         self.terminalRect = self.terminal.get_rect(topleft=self.terminalPos)
@@ -42,9 +42,6 @@ class Terminal:
 
         self.isFocused = False
 
-        self.outputTextColor = (220, 224, 230)
-        self.errorTextColor = (255, 120, 120)
-
         # terminal actions
         self.draggingTerminal = False
         self.terminalResizing = False
@@ -59,7 +56,10 @@ class Terminal:
         self.outputPanelCloseButtonRect = None
         self.outputLines = []
         self.outputTextColor = (220, 224, 230)
+        
+        self.outputTextColor = (220, 224, 230)
         self.errorTextColor = (255, 120, 120)
+        self.successTextColor = (20, 255, 0)
 
         # initialize dragging offset
         self.draggingOffsetX = 0
@@ -69,9 +69,9 @@ class Terminal:
         exec(code, {}, self.userControlledVariables)
 
     def codeLineHighlight(self, text):
-        """Function that highlights codes in real-time, as the user types. It's not important to understand
-        what the following code does. If you're really curious, search up lexing. This function will return
-        a list 'surfaces' containing all colored token surfaces."""
+        """function that highlights codes in real time, as the user types. it's not important to understand
+        what the following code does. if youre really curious, search up lexing. this function will return
+        a list "surfaces" containing all colored token surfaces."""
 
         # all the token colors. Chat-gpted, obviously.
         tokenColors = {
@@ -141,6 +141,11 @@ class Terminal:
                 pygame.quit()
                 exit()
 
+            if self.outputPanelVisible:
+                if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    if self.outputPanelCloseButtonRect and self.outputPanelCloseButtonRect.collidepoint(mousePosX, mousePosY):
+                        self.outputPanelVisible = False
+                continue 
             
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
@@ -233,8 +238,8 @@ class Terminal:
 
             if self.isFocused:
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_BACKSPACE or event.key == pygame.K_DELETE:
-                        continue  # backspace and delete handled in game loop
+                    if event.key == pygame.K_BACKSPACE:
+                        continue  # backspace handled in game loop
 
                     elif event.key == pygame.K_LEFT:
                         if self.cursorColIndex > 0:
@@ -321,7 +326,11 @@ class Terminal:
                                     isError = True
                             
                             outputText = codeOutput.getvalue()
-                            textColor = self.errorTextColor if isError else self.outputTextColor
+                            if outputText == "":
+                                outputText = "Success!"
+                                textColor = self.successTextColor
+                            else:
+                                textColor = self.errorTextColor if isError else self.outputTextColor
 
                             self.outputLines = []
                             for line in outputText.splitlines():
@@ -336,7 +345,7 @@ class Terminal:
                         if self.outputPanelVisible and self.outputPanelCloseButtonRect and self.outputPanelCloseButtonRect.collidepoint((mousePosX, mousePosY)):
                             self.outputPanelVisible = False
 
-        # backspace and delete handling
+        # backspace handling
         textModified = False
         pressedKeys = pygame.key.get_pressed()
 
@@ -379,10 +388,8 @@ class Terminal:
         # cursor logic
         textBeforeCursor = self.codeLines[self.currentLineIndex][:self.cursorColIndex]
         cursorOffsetX = self.font.size(textBeforeCursor)[0] + self.TERMINAL_PADDING[0]
-
         cursorStartY = self.currentLineIndex * self.TERMINAL_LINE_HEIGHT + self.TERMINAL_PADDING[1]
         cursorEndY = cursorStartY + self.font.get_height()
-        pygame.draw.line(self.terminal, (255, 255, 255), (cursorOffsetX, cursorStartY), (cursorOffsetX, cursorEndY), width=2)
 
         if cursorEndY > self.terminalSize[1] - 20:
             self.terminalSize[1] += 50
@@ -399,6 +406,12 @@ class Terminal:
             if surfaces:
                 for surface, x in surfaces:
                     self.terminal.blit(surface, (self.TERMINAL_PADDING[0] + x, lineIndex * self.TERMINAL_LINE_HEIGHT + self.TERMINAL_PADDING[1]))
+
+
+        # drawing the cursor
+        # i might add cursor blink later
+        if self.isFocused:
+            pygame.draw.line(self.terminal, (255, 255, 255), (cursorOffsetX, cursorStartY), (cursorOffsetX, cursorEndY), width=2)
 
         # nav bar
         pygame.draw.rect(self.terminal, (48, 44, 44, 222), (0, 0, self.terminalSize[0], 50))
