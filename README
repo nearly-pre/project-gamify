@@ -1,0 +1,3 @@
+To run the game, make sure you have the latest version Python installed. Run the game using the following command:
+
+python -m level_2_variables.main

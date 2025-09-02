@@ -4,6 +4,7 @@ from pygments import lex
 from pygments.lexers import PythonLexer
 from pygments.token import Token
 from contextlib import redirect_stdout
+from os.path import join
 import io
 
 class Terminal:
@@ -29,10 +30,10 @@ class Terminal:
         self.terminalRect = self.terminal.get_rect(topleft=self.terminalPos)
         self.resizeMargin = 5
 
-        self.runButton = pygame.image.load('./runButton.png')
+        self.runButton = pygame.image.load(join("terminal", "runButton.png"))
         self.runButtonRect = self.runButton.get_rect(topleft=(self.terminalPos[0] + 10, self.terminalPos[1] + 10))
 
-        self.font = pygame.font.Font("./JetBrainsMono-Regular.ttf", 25)
+        self.font = pygame.font.Font(join("terminal", "JetBrainsMono-Regular.ttf"), 25)
         self.lineSurfaces = [0]
         self.codeLines = [""]
         self.currentLineIndex = 0
@@ -429,7 +430,7 @@ class Terminal:
             self.outputPanelSurface.fill((38, 38, 38, 200))
             pygame.draw.rect(self.outputPanelSurface, (80, 80, 80, 200), self.outputPanelSurface.get_rect(), 2)
 
-            titleFont = pygame.font.Font("./JetBrainsMono-Regular.ttf", 20)
+            titleFont = pygame.font.Font(join("level_2_variables", "JetBrainsMono-Regular.ttf"), 20)
             titleSurface = titleFont.render("Output", True, (200, 200, 200))
             self.outputPanelSurface.blit(titleSurface, (10, 8))
 
