@@ -144,12 +144,12 @@ class Game:
 
                 if not self.playerIsBlind: 
                     if transparency > 40:
-                        self.vignette.set_alpha(transparency - 5)
+                        self.vignette.set_alpha(transparency - 13 * dt)
                     else:
                         self.vignetteTransitionMode = False
                 else:
                     if transparency < 255:
-                        self.vignette.set_alpha(transparency + 5)
+                        self.vignette.set_alpha(transparency + 13 * dt)
                     else:
                         self.vignetteTransitionMode = False
 
