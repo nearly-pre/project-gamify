@@ -294,12 +294,11 @@ class Game:
                                 
                                 self.dialogIndex += 1
             
-            # After the last dialog is shown, start a timer to automatically begin the fade to black
             if self.dialogIndex == 8 and not self.player.isMovable and not self.gameOverTransition:
                 if self.finalDialogStartTime is None:
                     self.finalDialogStartTime = pygame.time.get_ticks()
                 
-                if pygame.time.get_ticks() - self.finalDialogStartTime > 1000: # 1 second delay
+                if pygame.time.get_ticks() - self.finalDialogStartTime > 1000:
                     self.gameOverTransition = True
 
 
@@ -403,27 +402,21 @@ class Game:
 
                 if not self.player.isMovable:
                     self.displaySurface.blit(self.dialogBoxes[self.dialogIndex], (0, 0))
-                    # Do not show the next button on the final dialog (index 8)
                     if not self.gameOverTransition and self.dialogIndex != 8:
                         self.displaySurface.blit(self.nextButton, (600, 590))
                 else:
                     self.displaySurface.blit(self.currentObjectiveImage, self.currentObjectiveRect)
 
                 if self.gameOverTransition:
-                    # Create a temporary surface that can handle transparency
-                    fade_surface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+                    fadeSurface = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
                     
-                    # Increase opacity over time, ensuring it doesn't exceed 255
-                    self.opacity += 150 * dt  # Adjust 150 to make the fade faster or slower
+                    self.opacity += 150 * dt  
                     self.opacity = min(self.opacity, 255)
                     
-                    # Fill the surface with black at the calculated opacity
-                    fade_surface.fill((0, 0, 0, int(self.opacity)))
+                    fadeSurface.fill((0, 0, 0, int(self.opacity)))
                     
-                    # Blit the fade surface over the game screen
-                    self.displaySurface.blit(fade_surface, (0, 0))
+                    self.displaySurface.blit(fadeSurface, (0, 0))
                     
-                    # Once the screen is fully black, trigger the game over state
                     if self.opacity >= 255:
                         self.gameOver = True
 
