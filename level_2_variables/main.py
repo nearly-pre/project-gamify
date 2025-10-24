@@ -1,11 +1,11 @@
 from random import randint
 from pytmx.util_pygame import load_pygame
 from copy import deepcopy
-from .settings import *
-from .player import Player
-from .sprites import CollisionSprite, Sprite
-from .groups import AllSprites
-from .terminal import Terminal
+from settings import *
+from player import Player
+from sprites import CollisionSprite, Sprite
+from groups import AllSprites
+from terminal import Terminal
 
 class Game:
     def __init__(self):
@@ -50,11 +50,6 @@ class Game:
 
     def setup(self):
         map = load_pygame(join('data', 'maps', 'main.tmx'))
-
-        for ts in map.tilesets:
-            for tile_id, surface in ts.tile_images.items():
-                if surface:
-                    ts.tile_images[tile_id] = surface.convert_alpha()
 
         image = pygame.image.load(join('data', 'dialogs', 'next_button.png')).convert_alpha()
         self.nextButton = image
