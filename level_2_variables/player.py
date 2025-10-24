@@ -17,7 +17,7 @@ class Player(pygame.sprite.Sprite):
         self.frameIndex = 0
         self.animationType = "idle"
         self.canMove = True
-        self.gameHasStarted = False
+        self.isMovable = False
         frameWidth = 96
         frameHeight = 64
 
@@ -97,7 +97,7 @@ class Player(pygame.sprite.Sprite):
             self.image = pygame.transform.flip(self.image, True, False)
 
     def update(self, dt):
-        if self.canMove and self.gameHasStarted:
+        if self.canMove and self.isMovable:
             self.input()
             self.move(dt)
         else:
