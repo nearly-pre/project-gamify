@@ -1,6 +1,8 @@
 import pygame
+import os
 from pygamevideo import Video
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 width, height, fps = 1920, 1080, 60
 
 class Option:
@@ -44,10 +46,24 @@ class Game:
         pygame.display.set_caption("Refraction Quiz")
         self.clock = pygame.time.Clock()
         self.running = False
-        self.scenes = [Video("sceneOne.mp4"), Video("sceneTwo.mp4"), Video("sceneThree.mp4")]
+        self.scenes = [
+            Video(os.path.join(BASE_DIR, "sceneOne.mp4")),
+            Video(os.path.join(BASE_DIR, "sceneTwo.mp4")),
+            Video(os.path.join(BASE_DIR, "sceneThree.mp4")),
+        ]
+
         self.sceneIndex = 0
         self.scenes[self.sceneIndex].play()
-        self.font = pygame.font.Font("cmu.ttf", 42)
+        self.font = pygame.font.Font(os.path.join(BASE_DIR, "cmu.ttf"), 42)
+        self.correctVideoPaths = [
+            os.path.join(BASE_DIR, "sceneCorrect.mp4"),
+            os.path.join(BASE_DIR, "sceneCorrect2.mp4")
+        ]
+        self.wrongVideoPaths = [
+            os.path.join(BASE_DIR, "sceneWrong.mp4"),
+            os.path.join(BASE_DIR, "sceneWrong2.mp4")
+        ]
+
         self.paused = False
         self.fadeTimer = 0.0
         self.quiz1Options = [
@@ -62,8 +78,6 @@ class Game:
             Option("Light will bend away from the normal", (width//2 - 50, 630, 800, 120), self.font, startDelay=1.2),
         ]
         self.quiz2Correct = 2
-        self.correctVideoPaths = ["sceneCorrect.mp4", "sceneCorrect2.mp4"]
-        self.wrongVideoPaths = ["sceneWrong.mp4", "sceneWrong2.mp4"]
         self.options = self.quiz1Options
         self.correctOptionIndex = self.quiz1Correct
         self.feedbackVideo = None
@@ -114,7 +128,7 @@ class Game:
                         self.paused = False
                         self.currentQuiz = None
                     elif self.sceneIndex == 2:
-                        conclusion = Video("conclusion.mp4")
+                        conclusion = Video(os.path.join(BASE_DIR, "conclusion.mp4"))
                         conclusion.play()
                         while conclusion.current_frame < conclusion.total_frames:
                             for event in pygame.event.get():
