@@ -10,7 +10,7 @@ from copy import deepcopy
 class Game:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("Variables")
+        pygame.display.set_caption("Computer Science")
         
         self.displaySurface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         self.clock = pygame.time.Clock()

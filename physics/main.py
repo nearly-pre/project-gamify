@@ -43,7 +43,7 @@ class Game:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((width, height))
-        pygame.display.set_caption("Refraction Quiz")
+        pygame.display.set_caption("Physics")
         self.clock = pygame.time.Clock()
         self.running = False
         self.scenes = [
