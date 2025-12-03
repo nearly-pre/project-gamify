@@ -65,57 +65,56 @@ class Game:
 
         self.timer = 0
         self.finalDialogStartTime = None
-
+        
+        self.log("Game initialized")
         self.setup()
+
+    def log(self, message):
+        with open("log.txt", "a") as file:
+            file.write(f"[{pygame.time.get_ticks()}] {message}\n")
 
     def setup(self):
         map = load_pygame(join('level_2_variables', 'data', 'maps', 'main.tmx'))
 
-        # next button image
         image = pygame.image.load(join('level_2_variables', 'data', 'dialogs', 'next_button.png')).convert_alpha()
         self.nextButton = image
         self.nextButtonRect = self.nextButton.get_rect(topleft = (600, 590))
 
-        # dialog boxes
         for i in range(9):
             image = pygame.image.load(join('level_2_variables', 'data', 'dialogs', f'dialog{i}.png')).convert_alpha()
             self.dialogBoxes.append(image)
 
-        # objective boxes
         self.objectiveBoxes.append(pygame.image.load(join('level_2_variables', 'data', 'images', 'objective1.png')).convert_alpha())
         self.objectiveBoxes.append(pygame.image.load(join('level_2_variables', 'data', 'images', 'objective2.png')).convert_alpha())
         self.objectiveCompleteBoxes.append(pygame.image.load(join('level_2_variables', 'data', 'images', 'objective1_complete.png')).convert_alpha())
         self.objectiveCompleteBoxes.append(pygame.image.load(join('level_2_variables', 'data', 'images', 'objective2_complete.png')).convert_alpha())
-        self.currentObjectiveImage = self.objectiveBoxes[0] # setting up initial objective
+        self.currentObjectiveImage = self.objectiveBoxes[0] 
         self.currentObjectiveRect = (40, 40)
 
         mapWidth = map.width * TILE_SIZE
         mapHeight = map.height * TILE_SIZE
         self.internalSurface = pygame.Surface((mapWidth, mapHeight))
 
-        # adding all layers
         for layer in ['Water', 'Island', 'Dirt', 'Outgrowth']:
             for x, y, image in map.get_layer_by_name(layer).tiles():
                 Sprite((x * TILE_SIZE, y * TILE_SIZE), image, self.mapSprites)
         
-        # adding all collision layers
         for layer in ['StructuresOne', 'StructuresTwo', 'StructuresThree', 'StructuresFour']:
             for x, y, image in map.get_layer_by_name(layer).tiles():
                 CollisionSprite((x * TILE_SIZE, y * TILE_SIZE), image, (self.collSprites, self.mapSprites))
         
-        # drawing all layers
         self.internalSurface.fill('black')
         self.mapSprites.draw(self.internalSurface)
 
-        # adding all invisible collision layers separately
         for obj in map.get_layer_by_name('Collisions'):
             CollisionSprite((obj.x, obj.y), pygame.Surface((obj.width, obj.height)), self.collSprites)
 
-        # setting up player position
         for obj in map.get_layer_by_name('PlayerStartPosition'):
             if obj.name == "Player":
                 self.player = Player((obj.x, obj.y), self.allSprites, self.collSprites,
                                      self.userControlledVariables["playerSpeed"])
+        
+        self.log("Setup complete")
 
     def drawQuiz(self, quiz, events):
         self.displaySurface.fill((254, 250, 231))
@@ -132,9 +131,11 @@ class Game:
         if questionType.lower() == "output" and not self.quizStateChanged:
             self.quizState = "output"
             self.quizStateChanged = True
+            self.log("Quiz state changed to output")
         elif questionType.lower() == "normal" and not self.quizStateChanged:
             self.quizState = "normal"
             self.quizStateChanged = True
+            self.log("Quiz state changed to normal")
 
         if self.quizState == "output":
             question = self.quizQuestionFont.render("What will be the output?", True, (0, 0, 0))
@@ -172,6 +173,7 @@ class Game:
             if nextArrowRect.collidepoint(mousePos):
                 if leftMouseClicked:
                     self.quizState = "normal"
+                    self.log("Quiz switched back to normal view")
         else:
             if questionType == "output":
                 question = self.quizQuestionFont.render("What will be the output?", True, (0, 0, 0))
@@ -182,6 +184,7 @@ class Game:
                 if backArrowRect.collidepoint(mousePos):
                     if leftMouseClicked:
                         self.quizState = "output"
+                        self.log("Quiz switched to output view")
                         return
                             
             else: 
@@ -215,9 +218,11 @@ class Game:
                         self.quizIndex += 1
                         self.optionAnsweredStates = [0, 0, 0, 0]
                         self.quizStateChanged = False
+                        self.log(f"Quiz moved to question {self.quizIndex + 1}")
                         
                         if self.quizIndex == len(keys):
                             self.quizOver = True
+                            self.log(f"Quiz Over. Final Score: {self.quizScore}")
                         return
 
             optionRects = []
@@ -232,6 +237,7 @@ class Game:
                 
                 if isHovering and leftMouseClicked:
                     self.optionAnsweredStates[i] = 1
+                    self.log(f"Quiz option {i+1} selected. Correct: {isCorrect}")
                     if not isCorrect:
                         self.timer = pygame.time.get_ticks()
 
@@ -282,52 +288,57 @@ class Game:
             for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
+                    self.log("Game Quit")
                 if not self.player.isMovable:
-                    # check if next button is clicked
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         if event.button == 1:
                             if self.nextButtonRect.collidepoint(pygame.mouse.get_pos()):
-                                # start game if its the last dialog box
                                 if self.dialogIndex == 3:
                                     self.player.isMovable = True
                                     self.terminal = Terminal(deepcopy(self.userControlledVariables))
+                                    self.log("Terminal initialized")
                                 
                                 self.dialogIndex += 1
+                                self.log(f"Moved to dialog {self.dialogIndex}")
             
             if self.dialogIndex == 8 and not self.player.isMovable and not self.gameOverTransition:
                 if self.finalDialogStartTime is None:
                     self.finalDialogStartTime = pygame.time.get_ticks()
+                    self.log("Final dialog started")
                 
                 if pygame.time.get_ticks() - self.finalDialogStartTime > 1000:
                     self.gameOverTransition = True
+                    self.log("Game Over transition started")
 
 
             if not self.gameOver:
                 if self.terminal:
-                    # variable updated by user
                     if self.terminal.userControlledVariables != self.userControlledVariables:
                         self.terminal.isFocused = False
                         
                         self.userControlledVariables = deepcopy(self.terminal.userControlledVariables)
                         self.player.speed = self.userControlledVariables["playerSpeed"]
+                        self.log(f"User variables updated: {self.userControlledVariables}")
                         
                         newObjectiveCompleted = False
                         if not self.objectivesComplete[0] and not self.userControlledVariables["playerIsBlind"]:
                             self.currentObjectiveImage = self.objectiveCompleteBoxes[0]
                             self.objectivesComplete[0] = 1
                             newObjectiveCompleted = True
+                            self.log("Objective 1 completed")
                         elif self.objectivesComplete[0] and not self.objectivesComplete[1] and self.player.speed >= 200:
                             self.currentObjectiveImage = self.objectiveCompleteBoxes[1]
                             self.objectivesComplete[1] = 1
                             newObjectiveCompleted = True
+                            self.log("Objective 2 completed")
                         
-                        # objective transition
                         if newObjectiveCompleted:
                             self.objectiveFadeOut = True
                             self.timer = pygame.time.get_ticks()
 
                         if self.playerIsBlind != self.userControlledVariables["playerIsBlind"]:
                             self.vignetteTransitionMode = True
+                            self.log("Vignette transition toggled")
 
                         self.playerIsBlind = self.userControlledVariables["playerIsBlind"]
 
@@ -361,10 +372,10 @@ class Game:
                                 self.timer = pygame.time.get_ticks()
                                 self.currentObjectiveImage = self.objectiveBoxes[1]
                             else:
-                                # if all objectives have been completed, game has finished
                                 if all(self.objectiveBoxes):
                                     self.objectivesDone = True
                                     self.player.isMovable = False
+                                    self.log("All objectives done")
 
                 elif self.objectiveFadeIn:
                     if pygame.time.get_ticks() - self.timer > 500:
@@ -419,6 +430,7 @@ class Game:
                     
                     if self.opacity >= 255:
                         self.gameOver = True
+                        self.log("Game Over")
 
 
             else:           
